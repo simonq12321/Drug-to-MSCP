@@ -1,21 +1,22 @@
 import streamlit as st
+from styles import apply_global_styles
 
 st.set_page_config(
-    page_title="Drug Database",
+    page_title="Mass Spectrometric Detected Cancer Proteins",
+    page_icon="",
     layout="wide"
 )
 
-st.title("Drug Database")
+apply_global_styles()
 
-st.write("""
-Welcome to the drug database.
+pages = {
+    "Navigation": [
+        st.Page("home.py", title="Home Page"),
+        st.Page("pages/drug_search.py", title="Drug -> Disease Search"),
+        st.Page("pages/reverse_search.py", title="Disease -> Drug Search"),
+        st.Page("pages/protein_to_disease.py", title="Protein -> Disease Search"),
+    ]
+}
 
-Use the sidebar to navigate between pages.
-""")
-
-st.markdown("""
-### Available Pages
-
-- **Drug Search**: Search a drug, select a target, view UniProt results, and see disease associations.
-- **Reverse Search**: Search a disease and find drugs connected to disease-associated proteins.
-""")
+pg = st.navigation(pages)
+pg.run()

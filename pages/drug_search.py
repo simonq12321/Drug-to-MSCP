@@ -2,70 +2,136 @@ import streamlit as st
 import pandas as pd
 import requests
 import re
-
+from styles import apply_global_styles
 
 # -----------------------------
-# Load drug data
+# Global Styles
+# -----------------------------
+apply_global_styles()
+
+st.markdown('<div class="content-container">', unsafe_allow_html=True)
+
+# -----------------------------
+# Page Header
+# -----------------------------
+st.title("Drug → Target → UniProt → Disease Lookup")
+
+st.write(
+    "Search for a drug, select one of its targets, convert aliases when needed, "
+    "retrieve matching UniProt entries, and display proteome associations."
+)
+
+# -----------------------------
+# File Paths
+# -----------------------------
+DRUG_DATA_PATH = "data/drugs_to_target.csv"
+PROTEIN_DISEASE_PATH = "data/protein_to_disease.csv"
+TARGET_ALIAS_PATH = "data/target_alias.csv"
+
+INVALID_VALUES = {
+    "",
+    "nan",
+    "none",
+    "null",
+    "n/a",
+    "na",
+    "other",
+    "others"
+}
+
+# -----------------------------
+# Load Drug Data
 # -----------------------------
 @st.cache_data
 def load_drug_data():
-    df = pd.read_csv("data/drugs_to_target.csv")
+    df = pd.read_csv(DRUG_DATA_PATH)
+    df.columns = df.columns.str.strip()
 
-    df["Drug Name"] = df["Drug Name"].astype(str)
-    df["Target"] = df["Target"].astype(str)
+    required_cols = ["Drug Name", "Target"]
+
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"Missing required column in drug table: {col}")
+            st.stop()
+
+    df["Drug Name"] = df["Drug Name"].fillna("").astype(str)
+    df["Target"] = df["Target"].fillna("").astype(str)
 
     return df
 
 
 # -----------------------------
-# Load protein-disease data
+# Load Protein-Disease Data
 # -----------------------------
 @st.cache_data
 def load_protein_disease_data():
-    df = pd.read_csv("data/protein_to_disease.csv")
+    df = pd.read_csv(PROTEIN_DISEASE_PATH)
+    df.columns = df.columns.str.strip()
 
-    df["Entry"] = df["Entry"].astype(str)
-    df["Gene"] = df["Gene"].astype(str)
+    required_cols = [
+        "Entry",
+        "Protein name",
+        "Protein description",
+        "Gene"
+    ]
+
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"Missing required column in protein-disease table: {col}")
+            st.stop()
+
+    df["Entry"] = df["Entry"].fillna("").astype(str)
+    df["Protein name"] = df["Protein name"].fillna("").astype(str)
+    df["Protein description"] = df["Protein description"].fillna("").astype(str)
+    df["Gene"] = df["Gene"].fillna("").astype(str)
 
     return df
 
 
 # -----------------------------
-# Load target alias data
+# Load Target Alias Data
 # -----------------------------
 @st.cache_data
 def load_target_aliases():
-    df = pd.read_csv("data/target_alias.csv")
+    df = pd.read_csv(TARGET_ALIAS_PATH)
+    df.columns = df.columns.str.strip()
 
-    df["Original Target"] = df["Original Target"].astype(str)
-    df["Search Term"] = df["Search Term"].astype(str)
+    required_cols = ["Original Target", "Search Term"]
+
+    for col in required_cols:
+        if col not in df.columns:
+            st.error(f"Missing required column in target alias table: {col}")
+            st.stop()
+
+    df["Original Target"] = df["Original Target"].fillna("").astype(str)
+    df["Search Term"] = df["Search Term"].fillna("").astype(str)
 
     return df
 
 
-drug_df = load_drug_data()
-protein_disease_df = load_protein_disease_data()
-alias_df = load_target_aliases()
-
-
 # -----------------------------
-# Split multiple targets
-# Example: "c-Kit,PDGFR,VEGFR" -> ["c-Kit", "PDGFR", "VEGFR"]
+# Split Multiple Targets
+# Example:
+# "c-Kit,PDGFR,VEGFR" -> ["c-Kit", "PDGFR", "VEGFR"]
 # -----------------------------
 def split_targets(target_string):
+    if pd.isna(target_string):
+        return []
+
     targets = re.split(r"[,;/|]+", str(target_string))
 
     targets = [
         target.strip()
         for target in targets
         if target.strip() != ""
+        and target.strip().lower() not in INVALID_VALUES
     ]
 
     return targets
 
 
 # -----------------------------
-# Convert target to UniProt search terms
+# Convert Target to UniProt Search Terms
 # Uses data/target_alias.csv
 # -----------------------------
 def get_uniprot_search_terms(selected_target, alias_df):
@@ -88,13 +154,14 @@ def get_uniprot_search_terms(selected_target, alias_df):
         term.strip()
         for term in search_terms
         if term.strip() != ""
+        and term.strip().lower() not in INVALID_VALUES
     ]
 
     return search_terms
 
 
 # -----------------------------
-# Helper: safely extract protein name from UniProt JSON
+# Helper: Safely Extract Protein Name from UniProt JSON
 # -----------------------------
 def extract_protein_name(result):
     protein_description = result.get("proteinDescription", {})
@@ -116,7 +183,7 @@ def extract_protein_name(result):
 
 
 # -----------------------------
-# Helper: safely extract gene names from UniProt JSON
+# Helper: Safely Extract Gene Names from UniProt JSON
 # -----------------------------
 def extract_gene_names(result):
     genes = result.get("genes", [])
@@ -178,7 +245,6 @@ def search_uniprot(search_terms):
             )
 
         # Query 2: broader fallback
-        # Helps for broader protein/receptor labels
         queries_to_try.append(
             f"(protein_name:{clean_term} OR {clean_term}) "
             f"AND organism_id:9606 AND reviewed:true"
@@ -230,9 +296,10 @@ def search_uniprot(search_terms):
 
 
 # -----------------------------
-# Get disease associations
+# Get Proteome Associations
+# Returns associated and unassociated proteomes
 # -----------------------------
-def get_disease_associations(uniprot_entry, protein_df):
+def get_proteome_associations(uniprot_entry, protein_df):
     match = protein_df[protein_df["Entry"] == uniprot_entry]
 
     if match.empty:
@@ -247,48 +314,151 @@ def get_disease_associations(uniprot_entry, protein_df):
         "Gene"
     ]
 
-    disease_columns = [
+    proteome_columns = [
         col for col in protein_df.columns
         if col not in info_columns
     ]
 
-    association_dict = {}
+    associated_proteomes = []
+    unassociated_proteomes = []
 
-    for col in disease_columns:
+    for col in proteome_columns:
         value = row[col]
+        is_associated = False
 
-        if pd.notna(value) and value != "":
+        if pd.notna(value) and str(value).strip() != "":
             try:
-                association_dict[col] = 1 if float(value) > 0 else 0
-            except:
-                association_dict[col] = 1
-        else:
-            association_dict[col] = 0
+                is_associated = float(value) > 0
+            except Exception:
+                is_associated = True
 
-    association_df = pd.DataFrame([association_dict])
+        if is_associated:
+            associated_proteomes.append(col)
+        else:
+            unassociated_proteomes.append(col)
 
     return {
         "protein_name": row.get("Protein name", "N/A"),
         "protein_description": row.get("Protein description", "N/A"),
         "gene": row.get("Gene", "N/A"),
-        "association_table": association_df
+        "associated_proteomes": associated_proteomes,
+        "unassociated_proteomes": unassociated_proteomes
     }
 
 
 # -----------------------------
-# Streamlit UI
+# Compact Proteome List Display
 # -----------------------------
-st.title("Drug → Target → UniProt → Disease Lookup")
+def display_compact_proteome_lists(associated_proteomes, unassociated_proteomes):
+    st.markdown(
+        """
+        <style>
+            .proteome-box {
+                background-color: white;
+                border: 1px solid #e6eef8;
+                border-radius: 14px;
+                padding: 14px 16px;
+                margin-top: 6px;
+                margin-bottom: 8px;
+            }
 
-st.write(
-    "Search for a drug, select one of its targets, convert aliases when needed, "
-    "retrieve matching UniProt entries, and display disease associations."
+            .proteome-heading {
+                font-weight: 700;
+                color: #0b4f8a !important;
+                margin-bottom: 6px;
+                font-size: 16px;
+            }
+
+            .proteome-list {
+                line-height: 1.1;
+                margin-top: 0px;
+                margin-bottom: 0px;
+                padding-left: 18px;
+            }
+
+            .proteome-list li {
+                margin-top: 0px;
+                margin-bottom: 1px;
+                padding-top: 0px;
+                padding-bottom: 0px;
+                font-size: 14px;
+                color: #0f172a !important;
+            }
+
+            .proteome-empty {
+                font-size: 14px;
+                color: #64748b !important;
+                margin: 0;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    col_assoc, col_unassoc = st.columns(2)
+
+    with col_assoc:
+        if len(associated_proteomes) == 0:
+            assoc_html = """
+            <div class="proteome-box">
+                <div class="proteome-heading">Associated Proteomes</div>
+                <p class="proteome-empty">None found.</p>
+            </div>
+            """
+        else:
+            assoc_items = "".join(
+                [f"<li>{proteome}</li>" for proteome in associated_proteomes]
+            )
+
+            assoc_html = f"""
+            <div class="proteome-box">
+                <div class="proteome-heading">Associated Proteomes</div>
+                <ul class="proteome-list">
+                    {assoc_items}
+                </ul>
+            </div>
+            """
+
+        st.markdown(assoc_html, unsafe_allow_html=True)
+
+    with col_unassoc:
+        if len(unassociated_proteomes) == 0:
+            unassoc_html = """
+            <div class="proteome-box">
+                <div class="proteome-heading">Unassociated Proteomes</div>
+                <p class="proteome-empty">None found.</p>
+            </div>
+            """
+        else:
+            unassoc_items = "".join(
+                [f"<li>{proteome}</li>" for proteome in unassociated_proteomes]
+            )
+
+            unassoc_html = f"""
+            <div class="proteome-box">
+                <div class="proteome-heading">Unassociated Proteomes</div>
+                <ul class="proteome-list">
+                    {unassoc_items}
+                </ul>
+            </div>
+            """
+
+        st.markdown(unassoc_html, unsafe_allow_html=True)
+
+
+# -----------------------------
+# Main App
+# -----------------------------
+drug_df = load_drug_data()
+protein_disease_df = load_protein_disease_data()
+alias_df = load_target_aliases()
+
+drug_search = st.text_input(
+    "Search Drug",
+    placeholder="Examples: Axitinib, Veliparib, Nintedanib"
 )
 
-drug_search = st.text_input("Search Drug")
-
 if drug_search:
-
     matches = drug_df[
         drug_df["Drug Name"].str.contains(
             drug_search,
@@ -361,7 +531,6 @@ if drug_search:
                 st.error("No UniProt result found.")
 
             else:
-                # Optional full table display of every result
                 uniprot_results_df = pd.DataFrame(uniprot_results)
 
                 st.dataframe(
@@ -411,14 +580,14 @@ if drug_search:
                     f"https://www.uniprot.org/uniprotkb/{accession}/entry"
                 )
 
-                disease_result = get_disease_associations(
+                proteome_result = get_proteome_associations(
                     accession,
                     protein_disease_df
                 )
 
                 st.subheader("Proteome Associations")
 
-                if disease_result is None:
+                if proteome_result is None:
                     st.error(
                         "No matching protein entry found in "
                         "protein_to_disease.csv."
@@ -427,20 +596,31 @@ if drug_search:
                 else:
                     st.write(
                         f"**Protein Name:** "
-                        f"{disease_result['protein_name']}"
+                        f"{proteome_result['protein_name']}"
                     )
 
                     st.write(
                         f"**Description:** "
-                        f"{disease_result['protein_description']}"
+                        f"{proteome_result['protein_description']}"
                     )
 
                     st.write(
                         f"**Gene:** "
-                        f"{disease_result['gene']}"
+                        f"{proteome_result['gene']}"
                     )
 
-                    st.dataframe(
-                        disease_result["association_table"],
-                        use_container_width=True
+                    associated_proteomes = proteome_result["associated_proteomes"]
+                    unassociated_proteomes = proteome_result["unassociated_proteomes"]
+
+                    display_compact_proteome_lists(
+                        associated_proteomes,
+                        unassociated_proteomes
                     )
+
+else:
+    st.info("Search for a drug to begin.")
+
+# -----------------------------
+# Close Content Container
+# -----------------------------
+st.markdown('</div>', unsafe_allow_html=True)

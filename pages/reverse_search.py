@@ -1,20 +1,27 @@
 import streamlit as st
 import pandas as pd
 import re
+from styles import apply_global_styles
 
 # -----------------------------
-# Page setup
+# Global Styles
 # -----------------------------
-st.set_page_config(page_title="Reverse Search", layout="wide")
+apply_global_styles()
 
-st.title("Reverse Disease / Data Source Search")
+st.markdown('<div class="content-container">', unsafe_allow_html=True)
+
+# -----------------------------
+# Page Header
+# -----------------------------
+st.title("Disease -> Drug Search")
+
 st.write(
     "Select a disease/data source and find drugs whose targets are related "
     "to proteins associated with that source."
 )
 
 # -----------------------------
-# File paths
+# File Paths
 # -----------------------------
 DRUG_DATA_PATH = "data/drugs_to_target.csv"
 PROTEIN_DISEASE_PATH = "data/protein_to_disease.csv"
@@ -31,9 +38,8 @@ INVALID_TARGETS = {
     "other"
 }
 
-
 # -----------------------------
-# Load drug data
+# Load Drug Data
 # -----------------------------
 @st.cache_data
 def load_drug_data():
@@ -57,9 +63,8 @@ def load_drug_data():
 
     return df
 
-
 # -----------------------------
-# Load protein-disease data
+# Load Protein-Disease Data
 # -----------------------------
 @st.cache_data
 def load_protein_disease_data():
@@ -85,9 +90,8 @@ def load_protein_disease_data():
 
     return df
 
-
 # -----------------------------
-# Clean text for matching
+# Clean Text for Matching
 # -----------------------------
 def normalize_text(text):
     if pd.isna(text):
@@ -113,9 +117,8 @@ def normalize_text(text):
 
     return text
 
-
 # -----------------------------
-# Split target strings
+# Split Target Strings
 # Example:
 # "c-Kit,PDGFR,VEGFR" -> ["c-Kit", "PDGFR", "VEGFR"]
 # -----------------------------
@@ -134,7 +137,6 @@ def split_targets(target_string):
         if target.strip()
     ]
 
-    # Remove invalid target values after splitting
     cleaned_targets = []
 
     for target in targets:
@@ -151,9 +153,8 @@ def split_targets(target_string):
 
     return cleaned_targets
 
-
 # -----------------------------
-# Expand broad target names into gene/prefix aliases
+# Expand Broad Target Names into Gene/Prefix Aliases
 # -----------------------------
 def expand_target_aliases(target):
     if pd.isna(target):
@@ -242,7 +243,7 @@ def expand_target_aliases(target):
 
         # Heat shock proteins
         "hsp": ["hsp"],
-        "hspeg hsp90": ["hsp90", "hsp"],
+        "hspeghsp90": ["hsp90", "hsp"],
     }
 
     search_terms = [target_norm]
@@ -250,7 +251,6 @@ def expand_target_aliases(target):
     if target_norm in alias_map:
         search_terms.extend(alias_map[target_norm])
 
-    # Remove empty aliases
     search_terms = [
         term for term in search_terms
         if term and term.lower() not in INVALID_TARGETS
@@ -258,9 +258,8 @@ def expand_target_aliases(target):
 
     return list(set(search_terms))
 
-
 # -----------------------------
-# Find related drugs for selected source
+# Find Related Drugs for Selected Source
 # -----------------------------
 @st.cache_data
 def find_related_drugs(drug_df, protein_df, selected_source):
@@ -278,7 +277,6 @@ def find_related_drugs(drug_df, protein_df, selected_source):
         .tolist()
     )
 
-    # Remove invalid/empty genes
     associated_genes = {
         gene for gene in associated_genes
         if gene and gene.lower() not in INVALID_TARGETS
@@ -294,7 +292,7 @@ def find_related_drugs(drug_df, protein_df, selected_source):
 
     matched_rows = []
 
-    # 4. Loop through drugs only
+    # 4. Loop through drugs
     for _, drug_row in drug_df.iterrows():
         drug_name = drug_row["Drug Name"]
         raw_targets = drug_row["Target"]
@@ -358,7 +356,6 @@ def find_related_drugs(drug_df, protein_df, selected_source):
     if not results_df.empty:
         results_df = results_df.drop_duplicates()
 
-        # Extra safety: remove rows where matched target is invalid
         results_df = results_df[
             ~results_df["Matched Target Term"]
             .str.strip()
@@ -368,9 +365,8 @@ def find_related_drugs(drug_df, protein_df, selected_source):
 
     return results_df, associated_proteins
 
-
 # -----------------------------
-# Main app
+# Main App
 # -----------------------------
 drug_df = load_drug_data()
 protein_df = load_protein_disease_data()
@@ -480,3 +476,8 @@ if selected_source:
 
 else:
     st.info("Select a data source to begin.")
+
+# -----------------------------
+# Close Content Container
+# -----------------------------
+st.markdown('</div>', unsafe_allow_html=True)
