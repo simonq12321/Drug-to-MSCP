@@ -110,14 +110,14 @@ def source_display_name(col):
 # -----------------------------
 # Page Content
 # -----------------------------
-st.title("Protein to Disease Search")
+st.title("Protein to Dataset Search")
 
 st.write(
-    "Search your protein-to-disease spreadsheet by protein entry, protein name, protein description, or gene."
+    "Search your protein-to-dataset spreadsheet by protein entry, protein name, protein description, or gene."
 )
 
 query = st.text_input(
-    "Search protein-to-disease database",
+    "Search protein-to-dataset",
     placeholder="Examples: A1BG_HUMAN, Alpha-1B-glycoprotein, A1BG, P04217"
 )
 
